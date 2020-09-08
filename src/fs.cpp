@@ -1,47 +1,42 @@
 #include "fs.h"
 #include "kernelfs.h"
 
-FS::FS()
-{
-	myImpl = new KernelFS();
-}
+KernelFS* FS::myImpl = new KernelFS();
 
-FS::~FS()
-{
-	delete myImpl;
-}
+FS::FS() {}
+FS::~FS() {}
 
 char FS::mount(Partition * partition)
 {
-	return KernelFS::mount(partition);
+	return myImpl->mount(partition);
 }
 
 char FS::unmount()
 {
-	return KernelFS::unmount();
+	return myImpl->unmount();
 }
 
 char FS::format()
 {
-	return KernelFS::format();
+	return myImpl->format();
 }
 
 FileCnt FS::readRootDir()
 {
-	return KernelFS::readRootDir();
+	return myImpl->readRootDir();
 }
 
 char FS::doesExist(char * fname)
 {
-	return KernelFS::doesExist(fname);
+	return myImpl->doesExist(fname);
 }
 
 File * FS::open(char * fname, char mode)
 {
-	return KernelFS::open(fname, mode);
+	return myImpl->open(fname, mode);
 }
 
 char FS::deleteFile(char * fname)
 {
-	return KernelFS::deleteFile(fname);
+	return myImpl->deleteFile(fname);
 }

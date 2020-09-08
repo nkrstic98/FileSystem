@@ -3,9 +3,6 @@
 typedef long FileCnt;
 typedef unsigned long BytesCnt;
 
-const unsigned int FNAMELEN = 8;
-const unsigned int FEXTLEN = 3;
-
 class KernelFS;
 class Partition;
 class File;
@@ -28,5 +25,5 @@ public:
 	static char deleteFile(char* fname);
 protected:
 	FS();
-	static KernelFS *myImpl;
+	static KernelFS *myImpl; //postoji samo jedan File System, te je zbog toga staticka promenljiva
 };
