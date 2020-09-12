@@ -11,11 +11,11 @@ struct BitVector {
 };
 
 struct DirEntry {
-	char fname[FNAMELEN];
-	char fext[FEXTLEN];
+	char fname[FNAMELEN] = { 0 };
+	char fext[FEXTLEN] = { 0 };
 	char notUsed = 0;
 	uint32_t cluster;
-	uint32_t fileSize;
+	uint64_t fileSize;
 	char free[12] = { 0 };
 };
 

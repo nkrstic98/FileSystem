@@ -6,7 +6,7 @@
 
 using namespace std;
 
-KernelFS::KernelFS() : part(nullptr) {}
+KernelFS::KernelFS() : part(nullptr), fileNum(0) {}
 
 KernelFS::~KernelFS() {}
 
@@ -61,14 +61,9 @@ char KernelFS::format()
 		dirEntry[i].fname[0] = 0;
 	}
 
-	char rootDir[ClusterSize];
+	this->fileNum = 0; //formatirana particija ne sadrzi fajlove
 
-	int j = 0;
-
-	for (int i = 0; i < DIRNUM; i++) {
-		rootDir[j] = 0; //ako je prvi karakter naziva fajla 0, to znaci da je lokacija slobodna, moze da se smesti novi fajl
-		j += 32;
-	}
+	char rootDir[ClusterSize] = { 0 };
 
 	part->writeCluster(1, rootDir); //zapamti formatiranje klastera 1
 
@@ -79,11 +74,23 @@ char KernelFS::format()
 
 FileCnt KernelFS::readRootDir()
 {
-	return FileCnt();
+	if (part == nullptr) return -1;
+
+	return this->fileNum;
 }
 
 char KernelFS::doesExist(char * fname)
 {
+	if (part == nullptr) return -1;
+
+	if (this->fileNum == 0) return 0;
+
+	for (int i = 0; i < DIRNUM; i++) {
+		if (dirEntry[i].fname[0] == 0) continue; //ulaz je slobodan, ne sadrzi podatke o fajlu
+
+		if (strcmp(dirEntry[i].fname, fname) == 0) return 1;
+	}
+
 	return 0;
 }
 
@@ -105,9 +112,14 @@ void KernelFS::mountRootDir()
 
 	part->readCluster(1, (char*)rootCluster);
 
-	uint32_t hex0, hex1, hex2, hex3;
+	int hex0, hex1, hex2, hex3;
 
 	for (int i = 0; i < DIRNUM; i++) {
+		if (rootCluster[i * 32] == 0) { //ako je ulaz direktorijuma prazan, nema potrebe citati ostale podatke, vec samo zapamtiti da je ulaz prazan
+			dirEntry[i].fname[0] = 0;
+			continue;
+		}
+
 		char *hexval = new char[9];
 		char *byte = new char[3];
 
@@ -131,12 +143,21 @@ void KernelFS::mountRootDir()
 		hex2 = rootCluster[i * 32 + FNAMELEN + FEXTLEN + 1 + 4 + 2];
 		hex3 = rootCluster[i * 32 + FNAMELEN + FEXTLEN + 1 + 4 + 3];
 
+		if (hex0 < 0) hex0 += 256; //resava problem citanja iz memorije
+		if (hex1 < 0) hex1 += 256;
+		if (hex1 < 0) hex1 += 256;
+		if (hex1 < 0) hex1 += 256;
+
 		itoa(hex3, hexval, 16);
 		strcat(hexval, itoa(hex2, byte, 16));
 		strcat(hexval, itoa(hex1, byte, 16));
 		strcat(hexval, itoa(hex0, byte, 16));
 
+		uint64_t s = stoi(hexval, 0, 16);
+
 		dirEntry[i].fileSize = stoi(hexval, 0, 16);
+
+		this->fileNum++;
 
 		delete[]hexval;
 		delete[]byte;

@@ -30,4 +30,6 @@ private:
 	Partition* part;
 	BitVector* bitVect;
 	DirEntry* dirEntry;
+
+	int fileNum;
 };
