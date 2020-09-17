@@ -22,7 +22,7 @@ public:
 
 	bool empty() const;
 
-	File* open(char *fname) const;
+	File* isOpen(char *fname) const;
 
 	FileElem *head, *tail;
 };

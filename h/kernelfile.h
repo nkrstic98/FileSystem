@@ -1,6 +1,8 @@
 #pragma once
 
 #include "dataRep.h"
+#include "dirCluster.h"
+#include "indexCluster.h"
 
 class KernelFile
 {
@@ -16,13 +18,18 @@ public:
 	BytesCnt getFileSize();
 	char truncate();
 
-	void setName(char *fname);
-	char* getName() const;
-
 	void setMode(char m);
 	char getMode() const;
 
+	void setMyEntry(int e);
+	int getMyEntry() const;
+
+	void setIndexCluster(char* cluster);
+	IndexCluster* getIndexCluster() const;
+
+	DirCluster* dirCluster;
 private:
-	char fname[13];
+	int myEntry;
 	char mode;
+	IndexCluster *indexCluster;
 };

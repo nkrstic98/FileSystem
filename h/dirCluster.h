@@ -26,11 +26,15 @@ public:
 	int getCluster(int entry) const;
 
 	void setSize(int entry, int fSize);
-	int getSize(char *fname) const;
+	int getSize(int entry) const;
 
 	FileCnt getFileNum() const;
 
 	char fileExists(char* fname) const;
+
+	DirEntry *getEntry() const;
+
+	int getMyEntry(char *fname) const;
 
 	DirEntry *dirEntry;
 };

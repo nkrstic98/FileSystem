@@ -21,7 +21,24 @@ void BitVector::format()
 	free = clusterNum - 2;
 }
 
-int BitVector::freeClusters() const
+int BitVector::freeClustersNum() const
 {
 	return free;
+}
+
+uint32_t BitVector::takeCluster()
+{
+	for (int i = 0; i < clusterNum * 8; i++) {
+		if (TestBit(bitVect, i)) {
+			ClearBit(bitVect, i);
+			return i;
+		}
+	}
+
+	return 0;
+}
+
+void BitVector::freeCluster(int cluster)
+{
+	SetBit(bitVect, cluster);
 }

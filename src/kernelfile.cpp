@@ -38,18 +38,6 @@ char KernelFile::truncate()
 	return 0;
 }
 
-void KernelFile::setName(char * fname)
-{
-	int i = 0;
-	for (; i < strlen(fname); i++) this->fname[i] = fname[i];
-	this->fname[i] = '\0';
-}
-
-char * KernelFile::getName() const
-{
-	return (char*)fname;
-}
-
 void KernelFile::setMode(char m)
 {
 	mode = m;
@@ -58,4 +46,24 @@ void KernelFile::setMode(char m)
 char KernelFile::getMode() const
 {
 	return mode;
+}
+
+void KernelFile::setMyEntry(int e)
+{
+	myEntry = e;
+}
+
+int KernelFile::getMyEntry() const
+{
+	return myEntry;
+}
+
+void KernelFile::setIndexCluster(char * cluster)
+{
+	this->indexCluster = new IndexCluster(cluster);
+}
+
+IndexCluster * KernelFile::getIndexCluster() const
+{
+	return indexCluster;
 }

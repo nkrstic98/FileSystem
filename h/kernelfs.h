@@ -18,9 +18,15 @@ public:
 	char doesExist(char* fname);
 
 	File* open(char* fname, char mode);
-	File* createFile();
+
+	File* openForRead(char* fname);
+	File* openForWrite(char* fname, bool formated);
+	File* openForAppend(char *fname);
+
+	void formatFile(char *fname);
 
 	char deleteFile(char* fname);
+
 private:
 	Partition* part;
 	char *directoryCluster;

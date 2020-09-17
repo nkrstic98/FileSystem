@@ -64,13 +64,12 @@ bool FileList::empty() const
 	if (head != nullptr) return false;
 	else return true;
 }
-
-File* FileList::open(char * fname) const
+File* FileList::isOpen(char * fname) const
 {
 	FileElem* temp = head;
 
 	while (temp != nullptr) {
-		if (strcmp(temp->file->getName(), fname) == 0) return temp->file;
+		if (strcmp(temp->file->getKernelFile()->dirCluster->getName(temp->file->getKernelFile()->getMyEntry()), fname) == 0) return temp->file;
 		temp = temp->next;
 	}
 

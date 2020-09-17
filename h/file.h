@@ -17,9 +17,6 @@ public:
 
 	KernelFile* getKernelFile() const;
 
-	void setName(char *fname);
-	char* getName() const;
-
 private:
 	friend class FS;
 	friend class KernelFS;
