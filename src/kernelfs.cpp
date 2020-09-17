@@ -95,14 +95,21 @@ char KernelFS::doesExist(char * fname)
 
 File * KernelFS::open(char * fname, char mode)
 {
-	bool exists = this->doesExist(fname) == 1 ? true : false;
+	if (part == nullptr) return nullptr;
+
+	char fileName[13] = { 0 };
+	int i = 1;
+	for (; i < strlen(fname); i++) fileName[i - 1] = fname[i];
+	fileName[i] = '\0';
+
+	bool exists = this->doesExist(fileName) == 1 ? true : false;
 	bool open = exists && (this->openFiles->isOpen(fname) != nullptr);
 
 	//fajl ne postoji na disku
 	if (!exists) {
 		if (mode == 'r' || mode == 'a') return nullptr;
 		if (mode == 'w') {
-			return openForWrite(fname, false);
+			return openForWrite(fileName, false);
 		}
 	}
 
@@ -110,27 +117,27 @@ File * KernelFS::open(char * fname, char mode)
 		switch (mode)
 		{
 		case 'r':
-			return this->openForRead(fname);
+			return this->openForRead(fileName);
 			break;
 
 		case 'w':
 			//formatiraj fajl sa zadatim imenom
-			this->formatFile(fname);
-			return this->openForWrite(fname, true);
+			this->formatFile(fileName);
+			return this->openForWrite(fileName, true);
 			break;
 
 		case 'a':
-			return this->openForAppend(fname);
+			return this->openForAppend(fileName);
 			break;
 		}
 	}
 
 	if(open)
 	{
-		switch (this->openFiles->isOpen(fname)->getKernelFile()->getMode())
+		switch (this->openFiles->isOpen(fileName)->getKernelFile()->getMode())
 		{
 		case 'r':
-			if (mode == 'r') return this->openForRead(fname);
+			if (mode == 'r') return this->openForRead(fileName);
 			if (mode == 'w' || mode == 'a') { /*blokiraj se*/ }
 			break;
 
@@ -174,6 +181,7 @@ File* KernelFS::openForWrite(char* fname, bool formated)
 	file->getKernelFile()->setMyEntry(entry);
 	file->getKernelFile()->setMode('w');
 	file->getKernelFile()->dirCluster = this->dirEntry;
+	file->seek(0);
 
 	char format[ClusterSize] = { 0 };
 
@@ -272,5 +280,33 @@ void KernelFS::formatFile(char * fname)
 
 char KernelFS::deleteFile(char * fname)
 {
-	return 0;
+	if (part == nullptr) return 0;
+
+	char fileName[13] = { 0 };
+	int i = 1;
+	for (; i < strlen(fname); i++) fileName[i - 1] = fname[i];
+	fileName[i] = '\0';
+
+	bool exists = this->doesExist(fileName) == 1 ? true : false;
+	if (!exists) return 0;
+
+	this->formatFile(fileName);
+
+	int cluster = this->dirEntry->getCluster(this->dirEntry->getMyEntry(fileName));
+
+	char format[ClusterSize] = { 0 };
+	bitVect->freeCluster(cluster);
+
+	part->writeCluster(cluster, (char*)format);
+
+	DirEntry de;
+
+	DirEntry *dEntry = dirEntry->getEntry();
+
+	dEntry[this->dirEntry->getMyEntry(fileName)] = de;
+
+	part->writeCluster(0, bitVectorCluster);
+	part->writeCluster(1, directoryCluster);
+
+	return 1;
 }
