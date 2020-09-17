@@ -41,6 +41,21 @@ char File::truncate()
 	return myImpl->truncate();
 }
 
+KernelFile * File::getKernelFile() const
+{
+	return myImpl;
+}
+
+void File::setName(char * fname)
+{
+	myImpl->setName(fname);
+}
+
+char * File::getName() const
+{
+	return myImpl->getName();
+}
+
 File::File() 
 {
 	myImpl = new KernelFile();

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "file.h"
+#include "dataRep.h"
 
 class KernelFile
 {
@@ -15,5 +15,14 @@ public:
 	char eof();
 	BytesCnt getFileSize();
 	char truncate();
-};
 
+	void setName(char *fname);
+	char* getName() const;
+
+	void setMode(char m);
+	char getMode() const;
+
+private:
+	char fname[13];
+	char mode;
+};

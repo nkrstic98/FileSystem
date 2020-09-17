@@ -4,7 +4,7 @@
 KernelFS* FS::myImpl = new KernelFS();
 
 FS::FS() {}
-FS::~FS() {}
+FS::~FS() { delete myImpl; }
 
 char FS::mount(Partition * partition)
 {

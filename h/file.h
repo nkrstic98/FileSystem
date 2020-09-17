@@ -1,4 +1,5 @@
 #pragma once
+
 #include "fs.h"
 
 class KernelFile;
@@ -13,6 +14,11 @@ public:
 	char eof();
 	BytesCnt getFileSize();
 	char truncate();
+
+	KernelFile* getKernelFile() const;
+
+	void setName(char *fname);
+	char* getName() const;
 
 private:
 	friend class FS;
