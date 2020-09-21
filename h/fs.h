@@ -23,6 +23,8 @@ public:
 
 	static File* open(char* fname, char mode);
 	static char deleteFile(char* fname);
+
+	static KernelFS* getKernelFS() { return myImpl; }
 protected:
 	FS();
 	static KernelFS *myImpl; //postoji samo jedan File System, te je zbog toga staticka promenljiva

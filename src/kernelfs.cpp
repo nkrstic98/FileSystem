@@ -4,7 +4,8 @@
 
 using namespace std;
 
-KernelFS::KernelFS() : part(nullptr) {
+KernelFS::KernelFS() {
+	part = nullptr;
 	openFiles = new FileList();
 }
 
@@ -20,14 +21,14 @@ char KernelFS::mount(Partition * partition)
 {
 	if (partition == nullptr) return 0;
 
-	if (this->part != nullptr) {
+	if (part != nullptr) {
 		//ovde ide kod ako neko pokusa da montira dok postoji montirana particija
 	}
 
-	this->part = partition;
+	part = partition;
 
-	this->directoryCluster = new char[ClusterSize];
-	this->bitVectorCluster = new char[ClusterSize];
+	directoryCluster = new char[ClusterSize];
+	bitVectorCluster = new char[ClusterSize];
 
 	part->readCluster(0, (char*)bitVectorCluster); //montiranje bit vektora
 	part->readCluster(1, (char*)directoryCluster); //montiranje direktorijuma
@@ -102,8 +103,8 @@ File * KernelFS::open(char * fname, char mode)
 	for (; i < strlen(fname); i++) fileName[i - 1] = fname[i];
 	fileName[i] = '\0';
 
-	bool exists = this->doesExist(fileName) == 1 ? true : false;
-	bool open = exists && (this->openFiles->isOpen(fname) != nullptr);
+	bool exists = KernelFS::doesExist(fileName) == 1 ? true : false;
+	bool open = exists && (KernelFS::openFiles->isOpen(fname) != nullptr);
 
 	//fajl ne postoji na disku
 	if (!exists) {
@@ -117,27 +118,27 @@ File * KernelFS::open(char * fname, char mode)
 		switch (mode)
 		{
 		case 'r':
-			return this->openForRead(fileName);
+			return openForRead(fileName);
 			break;
 
 		case 'w':
 			//formatiraj fajl sa zadatim imenom
-			this->formatFile(fileName);
-			return this->openForWrite(fileName, true);
+			formatFile(fileName);
+			return openForWrite(fileName, true);
 			break;
 
 		case 'a':
-			return this->openForAppend(fileName);
+			return openForAppend(fileName);
 			break;
 		}
 	}
 
 	if(open)
 	{
-		switch (this->openFiles->isOpen(fileName)->getKernelFile()->getMode())
+		switch (openFiles->isOpen(fileName)->getKernelFile()->getMode())
 		{
 		case 'r':
-			if (mode == 'r') return this->openForRead(fileName);
+			if (mode == 'r') return openForRead(fileName);
 			if (mode == 'w' || mode == 'a') { /*blokiraj se*/ }
 			break;
 
@@ -157,11 +158,17 @@ File* KernelFS::openForRead(char* fname)
 	File *file = new File();
 	file->getKernelFile()->setMyEntry(dirEntry->getMyEntry(fname));
 	file->getKernelFile()->setMode('r');
-	file->getKernelFile()->dirCluster = this->dirEntry;
+
+	uint32_t index1Cluster = dirEntry->getCluster(dirEntry->getMyEntry(fname));
+	char *index1 = new char[ClusterSize];
+	part->readCluster(index1Cluster, index1); //ucitaj vrednost u klaster prvog nivoa
+	file->getKernelFile()->setIndexCluster(index1, index1Cluster);
+
+	file->getKernelFile()->open = true;
 
 	file->seek(0);
 
-	this->openFiles->add(file);
+	openFiles->add(file);
 
 	return file;
 }
@@ -180,8 +187,9 @@ File* KernelFS::openForWrite(char* fname, bool formated)
 	File *file = new File();
 	file->getKernelFile()->setMyEntry(entry);
 	file->getKernelFile()->setMode('w');
-	file->getKernelFile()->dirCluster = this->dirEntry;
 	file->seek(0);
+	file->getKernelFile()->empty = true;
+	file->getKernelFile()->open = true;
 
 	char format[ClusterSize] = { 0 };
 
@@ -195,7 +203,7 @@ File* KernelFS::openForWrite(char* fname, bool formated)
 		index1Cluster = dirEntry->getCluster(dirEntry->getMyEntry(fname));
 	}
 	part->readCluster(index1Cluster, index1); //ucitaj vrednost u klaster prvog nivoa
-	file->getKernelFile()->setIndexCluster(index1);
+	file->getKernelFile()->setIndexCluster(index1, index1Cluster);
 
 	uint32_t index2Cluster = bitVect->takeCluster(); //zauzmi klaster drugog nivoa
 	char *index2 = new char[ClusterSize];
@@ -211,11 +219,11 @@ File* KernelFS::openForWrite(char* fname, bool formated)
 	level2->entries[0] = dataCluster; //prvi ulaz indeksa drugog nivoa dobija vrednost data klastera
 	part->writeCluster(index2Cluster, index2); //sacuvamo to sto smo upisali
 
-	this->openFiles->add(file);
+	openFiles->add(file);
 
-	this->dirEntry->setName(entry, fname);
-	this->dirEntry->setCluster(entry, index1Cluster);
-	this->dirEntry->setSize(entry, 0); //na pocetku je velicina fajla jednaka 0
+	dirEntry->setName(entry, fname);
+	dirEntry->setCluster(entry, index1Cluster);
+	dirEntry->setSize(entry, 0); //na pocetku je velicina fajla jednaka 0
 
 	part->writeCluster(0, bitVectorCluster);
 	part->writeCluster(1, directoryCluster);
@@ -228,11 +236,16 @@ File* KernelFS::openForAppend(char* fname)
 	File *file = new File();
 	file->getKernelFile()->setMyEntry(dirEntry->getMyEntry(fname));
 	file->getKernelFile()->setMode('a');
-	file->getKernelFile()->dirCluster = this->dirEntry;
+	file->getKernelFile()->open = true;
 
-	file->seek(this->dirEntry->getSize(dirEntry->getMyEntry(fname)));
+	uint32_t index1Cluster = dirEntry->getCluster(dirEntry->getMyEntry(fname));
+	char *index1 = new char[ClusterSize];
+	part->readCluster(index1Cluster, index1); //ucitaj vrednost u klaster prvog nivoa
+	file->getKernelFile()->setIndexCluster(index1, index1Cluster);
 
-	this->openFiles->add(file);
+	file->seek(dirEntry->getSize(dirEntry->getMyEntry(fname)));
+
+	openFiles->add(file);
 
 	return file;
 }
@@ -287,12 +300,12 @@ char KernelFS::deleteFile(char * fname)
 	for (; i < strlen(fname); i++) fileName[i - 1] = fname[i];
 	fileName[i] = '\0';
 
-	bool exists = this->doesExist(fileName) == 1 ? true : false;
+	bool exists = doesExist(fileName) == 1 ? true : false;
 	if (!exists) return 0;
 
-	this->formatFile(fileName);
+	formatFile(fileName);
 
-	int cluster = this->dirEntry->getCluster(this->dirEntry->getMyEntry(fileName));
+	int cluster = dirEntry->getCluster(dirEntry->getMyEntry(fileName));
 
 	char format[ClusterSize] = { 0 };
 	bitVect->freeCluster(cluster);
@@ -303,7 +316,7 @@ char KernelFS::deleteFile(char * fname)
 
 	DirEntry *dEntry = dirEntry->getEntry();
 
-	dEntry[this->dirEntry->getMyEntry(fileName)] = de;
+	dEntry[dirEntry->getMyEntry(fileName)] = de;
 
 	part->writeCluster(0, bitVectorCluster);
 	part->writeCluster(1, directoryCluster);

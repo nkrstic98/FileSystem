@@ -1,11 +1,20 @@
 #include "indexCluster.h"
 
-IndexCluster::IndexCluster(char *cluster) : currPos(0)
+IndexCluster::IndexCluster(char *cluster, uint32_t entry)
 {
 	this->index_1 = (IndexEntry*)cluster;
+	this->clusterNum = entry;
+
+	currPos = 0;
+	for (int i = 0; i < INDEXSIZE; i++) {
+		if(index_1->entries[i] != 0) currPos++;
+		else break;
+	}
 }
 
-IndexCluster::~IndexCluster() {}
+IndexCluster::~IndexCluster() {
+	delete index_1;
+}
 
 int IndexCluster::setEntry(int e)
 {

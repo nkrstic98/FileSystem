@@ -1,4 +1,6 @@
 #include "dirCluster.h"
+#include "fs.h"
+#include "kernelfs.h"
 
 DirCluster::DirCluster(char * cluster)
 {

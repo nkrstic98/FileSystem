@@ -16,7 +16,7 @@ public:
 	~FileList();
 
 	void add(File *f);
-	void remove(File *f);
+	void remove(KernelFile *f);
 
 	void deleteList();
 

@@ -1,5 +1,6 @@
 #include "fileList.h"
 #include "kernelfile.h"
+#include "kernelfs.h"
 
 FileList::FileList() : head(nullptr), tail(nullptr) {}
 
@@ -21,18 +22,18 @@ void FileList::add(File * f)
 	}
 }
 
-void FileList::remove(File * f)
+void FileList::remove(KernelFile * f)
 {
 	FileElem *temp, *prev;
 
-	if (head->file == f) {
+	if (head->file->getKernelFile() == f) {
 		temp = head;
 		head = head->next;
 		delete temp;
 	}
 	else {
 		temp = head;
-		while (temp->file != f) {
+		while (temp->file->getKernelFile() != f) {
 			prev = temp;
 			temp = temp->next;
 			if (temp == nullptr) break;
@@ -69,7 +70,7 @@ File* FileList::isOpen(char * fname) const
 	FileElem* temp = head;
 
 	while (temp != nullptr) {
-		if (strcmp(temp->file->getKernelFile()->dirCluster->getName(temp->file->getKernelFile()->getMyEntry()), fname) == 0) return temp->file;
+		if (strcmp(FS::getKernelFS()->dirEntry->getName(temp->file->getKernelFile()->getMyEntry()), fname) == 0) return temp->file;
 		temp = temp->next;
 	}
 

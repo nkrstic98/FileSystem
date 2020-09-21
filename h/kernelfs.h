@@ -27,7 +27,6 @@ public:
 
 	char deleteFile(char* fname);
 
-private:
 	Partition* part;
 	char *directoryCluster;
 	char *bitVectorCluster;
