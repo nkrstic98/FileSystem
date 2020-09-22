@@ -37,5 +37,7 @@ public:
 	int getMyEntry(char *fname) const;
 
 	DirEntry *dirEntry;
+
+	Sem mutex;
 };
 

@@ -18,5 +18,7 @@ public:
 	IndexEntry* index_1;
 	uint32_t clusterNum;
 	int currPos;
+
+	Sem mutex;
 };
 

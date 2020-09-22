@@ -35,4 +35,11 @@ public:
 	DirCluster* dirEntry;
 
 	FileList* openFiles;
+
+	Sem mutex;
+	Sem mountSem, unmountSem;
+
+	int nw, nr;
+	int dw, dr;
+	Sem r, w;
 };

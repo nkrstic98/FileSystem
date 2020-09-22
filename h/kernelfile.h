@@ -28,7 +28,7 @@ public:
 	IndexCluster* getIndexCluster() const;
 
 	bool open, empty;
-	int posPtr; //pokazivac na tekucu poziciju u fajlu
+	long long int posPtr; //pokazivac na tekucu poziciju u fajlu
 
 private:
 	int myEntry;

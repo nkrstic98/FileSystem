@@ -1,6 +1,7 @@
 #pragma once
 
 #include "file.h"
+#include "dataRep.h"
 
 struct FileElem {
 	File *file;
@@ -25,5 +26,7 @@ public:
 	File* isOpen(char *fname) const;
 
 	FileElem *head, *tail;
+
+	Sem mutex;
 };
 

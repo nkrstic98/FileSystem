@@ -10,6 +10,8 @@ IndexCluster::IndexCluster(char *cluster, uint32_t entry)
 		if(index_1->entries[i] != 0) currPos++;
 		else break;
 	}
+
+	mutex = CreateSemaphore(0, 1, 1, NULL);
 }
 
 IndexCluster::~IndexCluster() {
@@ -18,9 +20,16 @@ IndexCluster::~IndexCluster() {
 
 int IndexCluster::setEntry(int e)
 {
-	if (currPos == INDEXSIZE) return -1;
+	wait(mutex);
+
+	if (currPos == INDEXSIZE) {
+		signal(mutex);
+		return -1;
+	}
 
 	index_1->entries[currPos++] = e;
+
+	signal(mutex);
 
 	return 0;
 }

@@ -1,5 +1,6 @@
 #include "kernelfile.h"
 #include "kernelFS.h"
+#include <iostream>
 
 KernelFile::KernelFile() : posPtr(0) {}
 
@@ -8,6 +9,34 @@ KernelFile::~KernelFile()
 	delete indexCluster;
 	FS::getKernelFS()->openFiles->remove(this);
 	open = false;
+
+
+	wait(FS::getKernelFS()->mutex);
+	switch (this->mode)
+	{
+	case 'r':
+		FS::getKernelFS()->nr--;
+		if (FS::getKernelFS()->nr == 0 && FS::getKernelFS()->dw > 0) {
+			FS::getKernelFS()->dw--;
+			signal(FS::getKernelFS()->w);
+		}
+		break;
+
+	case 'w':
+	case 'a':
+		if (FS::getKernelFS()->dr > 0) {
+			FS::getKernelFS()->dr--;
+			signal(FS::getKernelFS()->r);
+		}
+		else if (FS::getKernelFS()->dw > 0) {
+			FS::getKernelFS()->dw--;
+			signal(FS::getKernelFS()->w);
+		}
+		break;
+	}
+	signal(FS::getKernelFS()->mutex);
+
+	if (FS::getKernelFS()->openFiles->empty()) signal(FS::getKernelFS()->unmountSem);
 }
 
 char KernelFile::write(BytesCnt cnt, char * buffer)
@@ -18,119 +47,68 @@ char KernelFile::write(BytesCnt cnt, char * buffer)
 	if (FS::getKernelFS()->bitVect->freeClustersNum() == 0) return 0;
 	if (cnt == 0) return 0;
 
-	int index2 = ceil((double)posPtr / 2048.0) - 1;
-	if (index2 < 0) index2 = 0;
-	int index2_help = index2;
-	int index1 = ceil((double)index2 / 512.0) - 1;
-	if (index1 < 0) index1 = 0;
-
-	char l2Cluster[ClusterSize];
-	IndexEntry *index2Cluster = (IndexEntry*)l2Cluster;
-	FS::getKernelFS()->part->readCluster(indexCluster->getEntry(index1), l2Cluster);
-
-	for (int q = 0; q < INDEXSIZE; q++) {
-		if (index2Cluster->entries[q] != 0) index2 = q;
-		else break;
-	}
-
-	int neededClusters; //koliko mi max klastera treba
-	bool useAllocated = false;
-	int fileSize = getFileSize();
-
-	if (posPtr % 2048 != 0) {
-		int remainingSpace = 2048 - (posPtr - (index2_help * ClusterSize));
-		neededClusters = ceil((double)(cnt - remainingSpace) / 2048.0);
-		useAllocated = true;
-		empty = false;
-	}
-	else {
-		neededClusters = ceil((double)cnt / 2048.0); //ako mi je potreban ceo broj klastera
-	}
-
-	long long int i = 0; //ovo mi je pokazivac na pocetak fajla
-
-	char dataCluster[ClusterSize] = { 0 };
-
-	if (useAllocated) {
-		FS::getKernelFS()->part->readCluster(index2Cluster->entries[index2], dataCluster);
-		int start = posPtr - (index2_help * ClusterSize);
-		for (; start < ClusterSize; start++) {
-			dataCluster[start] = buffer[i++];
-			posPtr++; fileSize++;
-			if (i == cnt) {
-				FS::getKernelFS()->part->writeCluster(index2Cluster->entries[index2], dataCluster);
-				FS::getKernelFS()->dirEntry->setSize(myEntry, fileSize);
-				FS::getKernelFS()->part->writeCluster(1, FS::getKernelFS()->directoryCluster);
-				return 1;
-			}
-		}
-		FS::getKernelFS()->part->writeCluster(index2Cluster->entries[index2], dataCluster);
-	}
-
+	int start, index2, index1, remainingSpace;
+	long long int i = 0, fileSize = getFileSize();
 	int newCluster, newIndex;
-	char format[ClusterSize] = { 0 };
 
-	for (int j = 0; j < neededClusters; j++) {
-		if (!empty) {
-			index2++; //uzimamo prostor za novi klaster
-			if (index2 == INDEXSIZE) {
-				//alociramo novi klaster za indeks drugog nivoa
-				if (FS::getKernelFS()->bitVect->freeClustersNum() < 2 || index1 == INDEXSIZE - 1)
-					if (useAllocated) {
-						FS::getKernelFS()->dirEntry->setSize(myEntry, fileSize);
-						FS::getKernelFS()->part->writeCluster(1, FS::getKernelFS()->directoryCluster);
-						return 1; //ako sam vec upisivao, vrati 1
-					}
-					else return 0; //inace, vrati 0
+	char l2Cluster[ClusterSize], dataCluster[ClusterSize], format[ClusterSize] = { 0 };
+	IndexEntry *index2Cluster = (IndexEntry*)l2Cluster;
 
-				newIndex = FS::getKernelFS()->bitVect->takeCluster(); //alociraj novi indeks
-
-				indexCluster->setEntry(newIndex);
-				index1++;
-				FS::getKernelFS()->part->writeCluster(indexCluster->clusterNum, (char*)indexCluster->index_1->entries);
-
-				FS::getKernelFS()->part->readCluster(indexCluster->getEntry(index1), l2Cluster);
+	for (int j = 0; j < cnt; j++) {
+		start = posPtr % ClusterSize;
+		index2 = posPtr / ClusterSize;
+		index1 = index2 / 512;
+		if (index2 >= INDEXSIZE) {
+			if (index2 % 512 == 0) {
 				index2 = 0;
 			}
+			else {
+				index2 = index2 - index1 * 512;
+			}
+		}
+
+		FS::getKernelFS()->part->readCluster(indexCluster->getEntry(index1), l2Cluster);
+
+		FS::getKernelFS()->part->readCluster(index2Cluster->entries[index2], dataCluster);
+
+		dataCluster[start] = buffer[i++];
+
+		FS::getKernelFS()->part->writeCluster(index2Cluster->entries[index2], dataCluster);
+
+		posPtr++; fileSize++;
+
+		if(start == ClusterSize - 1) {
+
+			if (FS::getKernelFS()->bitVect->freeClustersNum() < 2 || index1 == INDEXSIZE - 1)
+				if (fileSize > 0) return 1;
+				else return 0;
+
+			if (index2 == INDEXSIZE - 1) {
+				newIndex = FS::getKernelFS()->bitVect->takeCluster();
+
+				indexCluster->setEntry(newIndex);
+				FS::getKernelFS()->part->writeCluster(indexCluster->clusterNum, (char*)indexCluster->index_1->entries);
+
+				index1++;
+				FS::getKernelFS()->part->readCluster(indexCluster->getEntry(index1), l2Cluster);
+
+				index2 = 0;
+			}
+			else
+				index2++;
 
 			newCluster = FS::getKernelFS()->bitVect->takeCluster();
-			if (newCluster == 0) {
-				FS::getKernelFS()->dirEntry->setSize(myEntry, fileSize);
-				FS::getKernelFS()->part->writeCluster(1, FS::getKernelFS()->directoryCluster);
-				return 1; //ako nema vise slobodnih klastera
-			}
-
 			FS::getKernelFS()->part->writeCluster(newCluster, format);
-
 			index2Cluster->entries[index2] = newCluster;
 			FS::getKernelFS()->part->writeCluster(indexCluster->getEntry(index1), l2Cluster);
-
-			for (int i = 0; i < ClusterSize; i++) dataCluster[i] = 0; //ocistimo niz svaki put kad krenemo da upisujemo u novi klaster
-		}
-		else {
-			newCluster = index2Cluster->entries[index2];
 		}
 
-		for (int pos = 0; pos < ClusterSize; pos++) {
-			dataCluster[pos] = buffer[i++];
-			posPtr++; fileSize++;
-			if (i == cnt) {
-				empty = false;
-				FS::getKernelFS()->part->writeCluster(index2Cluster->entries[index2], dataCluster);
-				FS::getKernelFS()->dirEntry->setSize(myEntry, fileSize);
-				FS::getKernelFS()->part->writeCluster(1, FS::getKernelFS()->directoryCluster);
-				return 1;
-			}
+		if (j == cnt - 1) {
+			FS::getKernelFS()->dirEntry->setSize(myEntry, fileSize);
+			FS::getKernelFS()->part->writeCluster(1, FS::getKernelFS()->directoryCluster);
+			return 1;
 		}
-	
-		FS::getKernelFS()->part->writeCluster(newCluster, dataCluster);
-
-		useAllocated = true;
-		empty = false;
 	}
-
-	FS::getKernelFS()->dirEntry->setSize(myEntry, fileSize);
-	FS::getKernelFS()->part->writeCluster(1, FS::getKernelFS()->directoryCluster);
 
 	return 1;
 }
@@ -142,12 +120,18 @@ BytesCnt KernelFile::read(BytesCnt cnt, char * buffer)
 	if (!open) return 0;
 	if (eof()) return 0;
 
-	int index2 = ceil((double)posPtr / 2048.0) - 1;
-	if (index2 < 0) index2 = 0;
-	int index1 = ceil((double)index2 / 512.0) - 1;
-	if (index1 < 0) index1 = 0;
+	int start = posPtr % ClusterSize;
+	int index2 = posPtr / ClusterSize;
+	int index1 = index2 / 512;
+	if (index2 >= INDEXSIZE) {
+		if (index2 % 512 == 0) {
+			index2 = 0;
+		}
+		else {
+			index2 = index2 - index1 * 512;
+		}
+	}
 
-	int start = posPtr - (index2 * ClusterSize);
 	long long int ind = 0;
 
 	char l2Cluster[ClusterSize], dataCluster[ClusterSize];
@@ -165,6 +149,7 @@ BytesCnt KernelFile::read(BytesCnt cnt, char * buffer)
 
 			for (; start < ClusterSize; start++) {
 				buffer[ind++] = dataCluster[start];
+				posPtr++;
 				if (ind == cnt) return ind;
 			}
 

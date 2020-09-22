@@ -4,9 +4,16 @@
 
 using namespace std;
 
-KernelFS::KernelFS() {
+KernelFS::KernelFS() : nr(0), nw(0), dr(0), dw(0) {
 	part = nullptr;
 	openFiles = new FileList();
+
+	mutex = CreateSemaphore(0, 1, 1, NULL);
+	mountSem = CreateSemaphore(0, 0, 1, NULL);
+	unmountSem = CreateSemaphore(0, 0, 1, NULL);
+
+	r = CreateSemaphore(0, 0, 1, NULL);
+	w = CreateSemaphore(0, 0, 1, NULL);
 }
 
 KernelFS::~KernelFS()
@@ -19,10 +26,14 @@ KernelFS::~KernelFS()
 
 char KernelFS::mount(Partition * partition)
 {
-	if (partition == nullptr) return 0;
+	if (partition == nullptr) { return 0; }
+
+	wait(mutex);
 
 	if (part != nullptr) {
-		//ovde ide kod ako neko pokusa da montira dok postoji montirana particija
+		signal(mutex); //ako se blokiram, treba da oslobodim ekskluzivni pristup
+		wait(mountSem); //blokiram se dok se ne unmountuje particija
+		wait(mutex); //cekam dok ne dobijem ekskluzivni pristup
 	}
 
 	part = partition;
@@ -36,16 +47,24 @@ char KernelFS::mount(Partition * partition)
 	bitVect = new BitVector(bitVectorCluster, part->getNumOfClusters());
 	dirEntry = new DirCluster(directoryCluster);
 
+	signal(mutex); //oslobadjam pristup deljenim promenljivama
+
 	return 1;
 }
 
 char KernelFS::unmount()
 {
-	if (part == nullptr) return 0;
+	wait(mutex);
+
+	if (part == nullptr) { signal(mutex); return 0; }
 
 	if (!openFiles->empty()) {
-		//ako ima otvorenih fajlova blokiramo se dok se lista ne isprazni, to jest svi fajlovi zatvore
+		signal(mutex);
+		wait(unmountSem);
+		wait(mutex);
 	}
+
+	
 
 	delete part;
 
@@ -59,11 +78,16 @@ char KernelFS::unmount()
 
 	bitVect = nullptr;
 	dirEntry = nullptr;
+
+	signal(mountSem);
+	signal(mutex);
 }
 
 char KernelFS::format()
 {
-	if (part == nullptr) return 0;
+	wait(mutex);
+
+	if (part == nullptr) { signal(mutex); return 0; }
 
 	bitVect->format();
 
@@ -77,40 +101,69 @@ char KernelFS::format()
 
 	part->readCluster(1, directoryCluster); //procitamo novu formatiranu vrednost klastera direktorijuma
 
+	signal(mutex);
+
 	return 1;
 }
 
 FileCnt KernelFS::readRootDir()
 {
-	if (part == nullptr) return -1;
+	wait(mutex);
+
+	if (part == nullptr) {
+		signal(mutex);
+		return -1;
+	}
+
+	signal(mutex);
 
 	return dirEntry->getFileNum();
 }
 
 char KernelFS::doesExist(char * fname)
 {
-	if (part == nullptr) return -1;
+	wait(mutex);
+
+	if (part == nullptr) {
+		signal(mutex);
+		return -1;
+	}
+
+	signal(mutex);
 
 	return dirEntry->fileExists(fname);
 }
 
 File * KernelFS::open(char * fname, char mode)
 {
-	if (part == nullptr) return nullptr;
+	File *f;
+
+	wait(mutex);
+
+	if (part == nullptr) {
+		signal(mutex);
+		return nullptr;
+	}
 
 	char fileName[13] = { 0 };
 	int i = 1;
 	for (; i < strlen(fname); i++) fileName[i - 1] = fname[i];
 	fileName[i] = '\0';
 
-	bool exists = KernelFS::doesExist(fileName) == 1 ? true : false;
-	bool open = exists && (KernelFS::openFiles->isOpen(fname) != nullptr);
+	bool exists = dirEntry->fileExists(fileName) == 1 ? true : false;
+	bool open = exists && (KernelFS::openFiles->isOpen(fileName) != nullptr);
 
 	//fajl ne postoji na disku
 	if (!exists) {
-		if (mode == 'r' || mode == 'a') return nullptr;
+		if (mode == 'r' || mode == 'a') {
+			signal(mutex);
+			return nullptr;
+		}
 		if (mode == 'w') {
-			return openForWrite(fileName, false);
+			f =  openForWrite(fileName, false);
+			nw++;
+			signal(mutex);
+			return f;
 		}
 	}
 
@@ -118,36 +171,160 @@ File * KernelFS::open(char * fname, char mode)
 		switch (mode)
 		{
 		case 'r':
-			return openForRead(fileName);
+			f = openForRead(fileName);
+			nr++;
+			signal(mutex);
+			return f;
 			break;
 
 		case 'w':
 			//formatiraj fajl sa zadatim imenom
 			formatFile(fileName);
-			return openForWrite(fileName, true);
+			f = openForWrite(fileName, true);
+			nw++;
+			signal(mutex);
+			return f;
 			break;
 
 		case 'a':
-			return openForAppend(fileName);
+			f = openForAppend(fileName);
+			nw++;
+			signal(mutex);
+			return f;
 			break;
 		}
 	}
 
 	if(open)
 	{
+		/*
 		switch (openFiles->isOpen(fileName)->getKernelFile()->getMode())
 		{
 		case 'r':
 			if (mode == 'r') return openForRead(fileName);
-			if (mode == 'w' || mode == 'a') { /*blokiraj se*/ }
+			if (mode == 'w') {
+				signal(mutex);
+				
+				wait(mutex);
+				
+				if (KernelFS::doesExist(fileName) == 1) {
+					this->formatFile(fname);
+					return this->openForWrite(fname, true);
+				}
+				else {
+					signal(mutex);
+					return this->openForWrite(fname, false);
+				}
+			}
+			if (mode == 'a') {
+				while (openFiles->isOpen(fileName)) { blokiraj se dok god je fajl otvoren }
+				if (KernelFS::doesExist(fileName) == 1) {
+					return this->openForAppend(fname);
+				}
+				else {
+					signal(mutex);
+					return nullptr;
+				}
+			}
 			break;
 
 		case 'w':
-			//blokiraj se
+			while (openFiles->isOpen(fileName)) { blokiraj se dok god je fajl otvoren }
+
+			if (mode == 'r') 
+				if (KernelFS::doesExist(fileName) == 1) return openForRead(fileName); 
+				else { signal(mutex); return nullptr; }
+
+			if (mode == 'w') {
+				if (KernelFS::doesExist(fileName) == 1) {
+					this->formatFile(fname);
+					return this->openForWrite(fname, true);
+				}
+				else {
+					signal(mutex);
+					return this->openForWrite(fname, false);
+				}
+			}
+
+			if (mode == 'a')
+				if (KernelFS::doesExist(fileName) == 1) return openForAppend(fileName);
+				else { signal(mutex); return nullptr; }
+
 			break;
 
 		case 'a':
-			//blokiraj se
+			while (openFiles->isOpen(fileName)) { blokiraj se dok god je fajl otvoren }
+
+			if (mode == 'r')
+				if (KernelFS::doesExist(fileName) == 1) return openForRead(fileName);
+				else { signal(mutex); return nullptr; }
+
+			if (mode == 'w') {
+				if (KernelFS::doesExist(fileName) == 1) {
+					this->formatFile(fname);
+					return this->openForWrite(fname, true);
+				}
+				else {
+					signal(mutex);
+					return this->openForWrite(fname, false);
+				}
+			}
+
+			if (mode == 'a')
+				if (KernelFS::doesExist(fileName) == 1) return openForAppend(fileName);
+				else { signal(mutex); return nullptr; }
+			break;
+		}
+		*/
+
+		switch (mode)
+		{
+		case 'r':
+			if (nw > 0) {
+				dr++;
+				signal(mutex);
+				wait(r);
+				wait(mutex);
+			}
+			nr++;
+			f = openForRead(fileName);
+			if (dr > 0) {
+				dr--;
+				signal(r);
+			}
+			signal(mutex);
+			return f;
+			break;
+
+		case 'w':
+		case 'a':
+			if (nw > 0 || nr > 0) {
+				dw++;
+				signal(mutex);
+				wait(w);
+				wait(mutex);
+			}
+			nw++;
+			if (mode == 'w') {
+				if (dirEntry->fileExists(fileName) == 1) {
+					this->formatFile(fileName);
+					f =  this->openForWrite(fileName, true);
+				}
+				else {
+					f =  this->openForWrite(fileName, false);
+				}
+			}
+			if (mode == 'a') {
+				if (dirEntry->fileExists(fileName) == 1) {
+					this->formatFile(fileName);
+					f = this->openForAppend(fileName);
+				}
+				else {
+					f = nullptr;
+				}
+			}
+			signal(mutex);
+			return f;
 			break;
 		}
 	}
@@ -293,7 +470,12 @@ void KernelFS::formatFile(char * fname)
 
 char KernelFS::deleteFile(char * fname)
 {
-	if (part == nullptr) return 0;
+	wait(mutex);
+
+	if (part == nullptr) {
+		signal(mutex); 
+		return 0;
+	}
 
 	char fileName[13] = { 0 };
 	int i = 1;
@@ -301,7 +483,10 @@ char KernelFS::deleteFile(char * fname)
 	fileName[i] = '\0';
 
 	bool exists = doesExist(fileName) == 1 ? true : false;
-	if (!exists) return 0;
+	if (!exists) {
+		signal(mutex);
+		return 0;
+	}
 
 	formatFile(fileName);
 
@@ -320,6 +505,8 @@ char KernelFS::deleteFile(char * fname)
 
 	part->writeCluster(0, bitVectorCluster);
 	part->writeCluster(1, directoryCluster);
+
+	signal(mutex);
 
 	return 1;
 }
